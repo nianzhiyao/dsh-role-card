@@ -290,6 +290,20 @@ DSH_ROLE_CARD_EXPAND_PROMPT=/path/to/expand-prompt.md
 
 诊断用：`GET /api/dsh-role-card/route` 返回当前选中的路由、候选路由列表、是否走直连。
 
+## 面板不显示时
+
+装上了、宿主也起来了，但侧边栏看不到「角色卡」，先看诊断端点：
+
+```bash
+curl -s -H 'x-dsh-role-card: ui' http://127.0.0.1:3080/api/dsh-role-card/diag
+```
+
+（桌面端端口看宿主输出，手机 DSHM 默认 `3080`。）
+
+- `client` 为 `null` → 浏览器半从没跑到 `apply()`：插件本体没进 boot roster。确认 `package.json` 里 `dsh.bundle.patch` 与 `dsh.client` 都在、`cordis.patch.yml` 里有这一行，然后**完整重启宿主**（不是刷新页面）。
+- `client.source` 为 `client-ready` → 已加载、已注册 slot，只是没显示：窄屏先展开侧栏抽屉；宽屏看 `sidebar.panellist` 有没有被别的插件占位。
+- `client.source` 为 `client-error` → 面板内部抛错，读 `client.error` 原文。
+
 ## 模式与尺度
 
 每张卡有四个独立旋钮，都存在卡上（跟着卡走，换设备也一样），改动立刻对下一轮生效。

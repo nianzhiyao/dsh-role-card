@@ -204,6 +204,7 @@ if (pkg !== null) {
   check('dsh.client 声明完整', () => {
     const client = pkg.dsh?.client
     assert(client !== undefined, 'package.json 缺 dsh.client')
+    assert(pkg.dsh?.manifestVersion === 1, 'package.json 缺 dsh.manifestVersion: 1（客户端插件的装载清单版本）')
     assert(client.platform === 'web', `platform 应为 web，实际 ${client.platform}`)
     assert(Array.isArray(client.inject) && client.inject.length >= 4, 'dsh.client.inject 太短')
     return client.inject.join(', ')
@@ -232,6 +233,12 @@ check('client.js 走 ModuleLoader 且注入 slots', () => {
   assert(clientSource.includes("require('react')"), '没有 require(\'react\')')
 })
 
+check('client.js 启动时上报 client-ready', () => {
+  assert(clientSource.includes("source: 'client-ready'"), '客户端没有启动上报，/diag 无法区分“没加载”和“没显示”')
+  assert(/ctx\.slots\.inject\('sidebar\.panellist'/.test(clientSource), '没有注册 sidebar.panellist')
+  assert(/ctx\.slots\.inject\('main'/.test(clientSource), '没有注册 main 面板')
+})
+
 check('API 请求带自定义鉴权头', () => {
   assert(hostSource.includes('x-dsh-role-card'), '宿主侧没有校验 x-dsh-role-card')
   assert(clientSource.includes('x-dsh-role-card'), '客户端没有发送 x-dsh-role-card')
@@ -240,7 +247,7 @@ check('API 请求带自定义鉴权头', () => {
 check('关键端点齐全', () => {
   const shared = ['/state', '/save', '/open', '/chat', '/chat/reset', '/tone', '/mode', '/style', '/pace', '/agemode', '/expand', '/import', '/novel', '/novel/extend', '/novel/next', '/lan', '/lan/start']
   // 只给诊断用的端点：宿主有，客户端不必调。
-  const hostOnly = ['/route', '/agents', '/poke', '/selftest', '/hello', '/card']
+  const hostOnly = ['/route', '/agents', '/poke', '/selftest', '/hello', '/card', '/diag']
   for (const suffix of [...shared, ...hostOnly]) {
     assert(hostSource.includes(`suffix === '${suffix}'`), `index.js 里没有 ${suffix} 分支`)
   }

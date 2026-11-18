@@ -657,6 +657,7 @@ export function createService() {
       return ready
     },
     snapshot: () => publicState(),
+    clientReport: () => client,
     hello: (payload) => {
       const source = typeof payload?.source === 'string' ? payload.source.slice(0, 32) : 'unknown'
       const note = typeof payload?.error === 'string' ? payload.error.slice(0, 800) : null
@@ -1882,6 +1883,30 @@ export function registerApi(ctx, token, service, chat) {
 
           if (req.method === 'GET' && suffix === '/route') {
             return respond(res, 200, { ok: true, ...chat.diagnostics() })
+          }
+
+          /* ---- 装载诊断：面板不显示时先看这里 ---- */
+          if (req.method === 'GET' && suffix === '/diag') {
+            const beacon = service.clientReport()
+            return respond(res, 200, {
+              ok: true,
+              host: {
+                node: process.version,
+                platform: process.platform,
+                arch: process.arch,
+                profile: process.env.DSH_PROFILE ?? null,
+                dshHome: process.env.DSH_HOME ?? null,
+                storeDir: STORE_DIR,
+                webPort,
+                apiPath: API_PATH,
+              },
+              client: beacon,
+              hints: [
+                'client 为 null：浏览器半从没执行到 apply —— 插件没进 boot roster，或 index.html 没注入令牌。',
+                "client.source 为 client-ready：客户端已加载并注册了 slot，面板只是没显示（窄屏请点侧栏抽屉）。",
+                'client.source 为 client-error：把 client.error 原文发出来，那是面板内部抛的错。',
+              ],
+            })
           }
 
           if (req.method === 'GET' && suffix === '/agents') {

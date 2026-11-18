@@ -191,6 +191,39 @@ curl -s -H "x-dsh-role-card: ui" http://127.0.0.1:<webPort>/api/dsh-role-card/st
 - `qr` 是让手机直接扫的口令链接（`urls[0].unlock`）的 SVG；没有 `qrcode` 模块时给 `qrError`，只剩链接可复制。
 - `authBridge` 为 `false` 表示宿主没暴露 `connection` 服务，手机能过口令页但进不了界面；`authNote` 会说明原因。
 
+## GET `/diag`
+
+装载诊断。面板在侧边栏不显示时，先看这里再怀疑别的。
+
+响应：
+
+```json
+{
+  "ok": true,
+  "host": {
+    "node": "v22.11.0",
+    "platform": "android",
+    "arch": "arm64",
+    "profile": "on-device",
+    "dshHome": "/data/storage/el2/base/haps/phone/files/dsh",
+    "storeDir": ".../dsh-role-card",
+    "webPort": 3080,
+    "apiPath": "/api/dsh-role-card"
+  },
+  "client": { "at": 1794978914054, "source": "client-ready", "version": "1.8.3", "href": "...", "ua": "..." },
+  "hints": ["client 为 null：...", "client.source 为 client-ready：...", "client.source 为 client-error：..."]
+}
+```
+
+`client` 是浏览器半最近一次 `POST /hello` 的记录：
+
+| 值 | 含义 | 下一步 |
+| --- | --- | --- |
+| `null` | 浏览器半从没执行到 `apply()` | 插件本体没进 boot roster：确认 `package.json` 的 `dsh.client` 与 `dsh.bundle.patch` 都在、`cordis.patch.yml` 里有这一行，然后重启宿主 |
+| `source: "client-ready"` | 已加载、已注册 slot | 面板只是没显示：窄屏先展开侧栏抽屉；再确认 `PANEL_ID` 没被别的插件抢占 |
+| `source: "client-error"` | 面板内部抛错 | 读 `client.error` 原文 |
+
+`/diag` 与其它端点共用同一鉴权头（`x-dsh-role-card`）；命令行里传 `ui` 即可。
 ## GET `/route` / GET `/agents`
 
 诊断用。`/route` 返回当前选中的 `route`（`{provider, model}`）、候选 `candidates`、`live`（能否直连）、`direct`。`/agents` 返回进程里 root agents 的 `{id, provider, model}` 视图。

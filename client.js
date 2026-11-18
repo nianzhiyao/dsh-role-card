@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const h = React.createElement
 
-    const VERSION = '1.8.2'
+    const VERSION = '1.8.3'
     const PANEL_ID = 'role-card'
     const API = '/api/dsh-role-card'
     const POLL_MS = 1200
@@ -1721,6 +1721,20 @@ window.__ModuleLoader__.load({
           () => h(PanelCtx.Provider, { value: ctx }, h(PanelHost)),
         ),
       )
+      // Boot beacon: the host half cannot otherwise tell "the browser half never
+      // ran" from "it ran and the panel is merely hidden". `GET /diag` reads the
+      // last report, so a device that shows no sidebar row can be triaged from
+      // the server side without a console.
+      try {
+        void api('POST', '/hello', {
+          source: 'client-ready',
+          version: VERSION,
+          href: String(window.location && window.location.href ? window.location.href : ''),
+          ua: String(navigator.userAgent === undefined ? '' : navigator.userAgent),
+        }).catch(() => {})
+      } catch (error) {
+        report('client-ready', error)
+      }
     }
 
     return { inject: ['slots'], apply, version: VERSION }

@@ -1,6 +1,6 @@
 {
   "name": "dsh-role-card",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "private": false,
   "type": "module",
   "main": "./index.js",
@@ -56,6 +56,7 @@
     "test": "node scripts/check.mjs"
   },
   "dsh": {
+    "manifestVersion": 1,
     "bundle": {
       "patch": "./cordis.patch.yml"
     },

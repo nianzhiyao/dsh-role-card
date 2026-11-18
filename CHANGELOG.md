@@ -4,6 +4,21 @@
 
 > 1.0.0 – 1.7.3 的条目根据开发过程中的备份与提交记录整理；1.7.4 起的条目与实际发布一一对应。
 
+## [1.8.3] — 2026-11-18
+
+「装上了但侧边栏没有」的自证能力：客户端启动上报 + 宿主诊断端点。
+
+### 新增
+
+- **客户端启动上报**：浏览器半在 `apply()` 末尾向宿主 `POST /hello` 打一条 `source: 'client-ready'`（带版本、页面地址、UA，失败不抛）。这样宿主不再只能靠猜区分「浏览器半根本没跑」和「跑了但面板没显示」。
+- **`GET /diag`**：返回宿主环境（node / 平台 / 架构 / profile / `DSH_HOME` / 数据目录 / 端口 / API 前缀）、最近一次客户端上报，以及三条判读提示。面板不显示时先看这里。
+- `package.json` 的 `dsh` 补 `manifestVersion: 1`，与其它客户端插件（`dsh-better-sidebar`、`dsh-whale-widget` 等）的清单声明对齐。
+- `scripts/check.mjs` 增加 `manifestVersion`、`/diag` 分支、`client-ready` 上报三组断言（共 59 项）。
+
+### 说明
+
+在无头 Edge 里对 dsh 0.2.0-rc.2 做过回归：桌面宽度与 390×844 移动视口下，`角色卡` 都能出现在侧边栏、`drc-rail` 正常挂载、控制台零报错、`/diag` 回报 `client-ready`。手机上看不到时，按顺序排查：应用完整重启一次 → `GET /diag` 看 `client` 是否为 `null` → 若为 `null` 则是本体没进 boot roster（升级/重装插件），若为 `client-ready` 则是窄屏下侧栏抽屉没展开。
+
 ## [1.8.2] — 2026-11-18
 
 装得上、加载不起来的问题：`exports` 缺 `"."` 主入口。
