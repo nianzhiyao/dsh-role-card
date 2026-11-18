@@ -192,7 +192,7 @@ if (pkg !== null) {
   check('仓库地址已指向真实仓库', () => {
     const repo = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url
     assert(typeof repo === 'string' && repo.length > 0, '缺 repository')
-    assert(!repo.includes('YOUR_GITHUB'), 'repository 还是占位账号 YOUR_GITHUB')
+    assert(!repo.includes('YOUR_' + 'GITHUB'), 'repository 还是占位账号（YOUR_GITHUB）')
     assert(repo.includes(pkg.name), `repository 里没有包名 ${pkg.name}：${repo}`)
     return repo
   })
