@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const h = React.createElement
 
-    const VERSION = '1.8.5'
+    const VERSION = '1.8.6'
     const PANEL_ID = 'role-card'
     const API = '/api/dsh-role-card'
     const POLL_MS = 2500
@@ -1062,8 +1062,11 @@ window.__ModuleLoader__.load({
               ? event.currentTarget
               : event.target
             : null
-        if (node === null || node === undefined || typeof node.getBoundingClientRect !== 'function') return null
-        const box = node.getBoundingClientRect()
+        if (node === null || node === undefined) return null
+        const host =
+          typeof node.closest === 'function' && node.closest('.drc-sel') !== null ? node.closest('.drc-sel') : node
+        if (typeof host.getBoundingClientRect !== 'function') return null
+        const box = host.getBoundingClientRect()
         return { left: box.left, top: box.top, bottom: box.bottom, width: box.width }
       } catch (error) {
         return null
@@ -1105,9 +1108,9 @@ window.__ModuleLoader__.load({
               (disabled
                 ? '\uFF08\u5F53\u524D\u6A21\u5F0F\u9501\u4F4F\u4E86\u8FD9\u4E2A\u9009\u9879\uFF09'
                 : '\u5F53\u524D\uFF1A' + active[1] + '\n' + '\u70B9\u4E00\u4E0B\u5C55\u5F00\u9009\u9879'),
-            onClick: () => {
+            onClick: (event) => {
               if (disabled) return
-              if (typeof props.onToggle === 'function') props.onToggle()
+              if (typeof props.onToggle === 'function') props.onToggle(event)
             },
           },
           h('em', null, active[1]),
