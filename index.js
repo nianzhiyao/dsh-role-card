@@ -112,6 +112,16 @@ function normalizeCard(raw) {
     updatedAt: Number.isFinite(raw.updatedAt) ? raw.updatedAt : Date.now(),
     // Session backing this card's chat; kept so a restart can resume it.
     chatSessionId: typeof raw.chatSessionId === 'string' ? raw.chatSessionId : null,
+    // 档位必须跟着卡一起落盘。早期版本这里只留了正文与时间戳，于是面板上改过的
+    // 模式/尺度/节奏/文风/年龄/模型只活在内存里，重启一次就回默认值。
+    // 老档里没有这几个键，缺省要按“一直以来的样子”补齐（成人 + 含情），
+    // 否则升级后所有旧卡会突然变成普通模式。新卡由 upsert 显式写 normal。
+    mode: pickOne(CONTENT_MODES, raw.mode, 'adult'),
+    tone: pickOne(TONES, raw.tone, 'soft'),
+    pace: pickOne(PACES, raw.pace, 'direct'),
+    style: pickOne(STYLES, raw.style, 'novel'),
+    ageMode: pickOne(['adult', 'original'], raw.ageMode, 'adult'),
+    model: typeof raw.model === 'string' && raw.model.length > 0 ? raw.model : null,
   }
 }
 
@@ -389,6 +399,8 @@ const ADULT_AGE = 24
 
 /* 内容模式：normal = 完全不写性描写；adult = 按尺度档来写。
  * 老卡没有这个字段（undefined）时按 adult 走，避免历史会话突然变味。 */
+/** 新卡与「没选过」的卡使用的模型；面板按钮按它显示「快 / 强」。 */
+export const DEFAULT_MODEL = 'deepseek-flash'
 export const CONTENT_MODES = ['normal', 'adult']
 /* 尺度：无 / 暗示 / 含情 / 露骨 / 极致 */
 export const TONES = ['none', 'hint', 'soft', 'explicit', 'hard']
@@ -640,7 +652,7 @@ export function createService() {
       paces: PACES,
       styles: STYLES,
       modes: CONTENT_MODES,
-      model: typeof card.model === 'string' ? card.model : null,
+      model: typeof card.model === 'string' && card.model.length > 0 ? card.model : DEFAULT_MODEL,
       hasChat: typeof card.chatSessionId === 'string',
       novel: novelMeta(loadNovel(card.id)),
     })),
@@ -900,7 +912,8 @@ export function createChatService(ctx, cards) {
     const llm = llmService()
     if (typeof llm?.stream !== 'function') throw new Error('本机 Harness 没有 llm 服务')
     const base = resolveRoute() ?? fallbackRoute()
-    const DEFAULT_ROLEPLAY_MODEL = 'deepseek-v4-pro'
+    // 默认走快档：角色扮演一轮的等待时间主要花在模型上，默认值应该是「不卡」。
+    const DEFAULT_ROLEPLAY_MODEL = 'deepseek-flash'
     const override =
       typeof card.model === 'string' && card.model.length > 0
         ? card.model
