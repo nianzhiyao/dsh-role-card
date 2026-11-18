@@ -389,7 +389,7 @@ const SCAN_TARGETS = [
   'index.js', 'client.js', 'import.js', 'lan.js', 'package.json', 'cordis.patch.yml',
   'README.md', 'README.en.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CODE_OF_CONDUCT.md',
   'docs/ARCHITECTURE.md', 'docs/API.md', 'docs/CARD-FORMAT.md', 'docs/PROMPT-CONTRACT.md',
-  'docs/LAN.md', 'docs/DEVELOPMENT.md', 'examples/card-sample.md', 'examples/expand-prompt.md',
+  'docs/LAN.md', 'docs/MOBILE.md', 'docs/DEVELOPMENT.md', 'examples/card-sample.md', 'examples/expand-prompt.md',
   'examples/state.schema.json', 'scripts/check.mjs',
 ]
 

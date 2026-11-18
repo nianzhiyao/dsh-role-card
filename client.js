@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const h = React.createElement
 
-    const VERSION = '1.8.0'
+    const VERSION = '1.8.1'
     const PANEL_ID = 'role-card'
     const API = '/api/dsh-role-card'
     const POLL_MS = 1200

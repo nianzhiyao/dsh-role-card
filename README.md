@@ -28,6 +28,7 @@
 
 - [特性](#特性)
 - [安装](#安装)
+- [装到手机](#装到手机dshm)
 - [快速上手](#快速上手)
 - [界面与操作](#界面与操作)
 - [角色卡格式](#角色卡格式)
@@ -112,6 +113,25 @@
 ### 卸载
 
 从 `dsh.profile.bundles` 里删掉 `dsh-role-card`，再从 `dependencies` 删掉那一行，`pnpm install`，重启。数据目录 `~/.dsh/dsh-role-card/` 会保留，想彻底清掉就手动删。
+
+## 装到手机（DSHM）
+
+手机上的 dsh 宿主一样能装它。以 [DSHM](https://github.com/RochelimitDawn/DSHM)（安卓 APK，内置 Debian 12 子系统 + dsh CLI，Web UI 在 `127.0.0.1:3080`）为例，最省事的是本地 tgz：
+
+```bash
+# 电脑上，插件目录里
+npm pack                       # → dsh-role-card-1.8.1.tgz
+python -m http.server 8000     # 同 WiFi 下给手机取件
+```
+
+```bash
+# 手机 DSHM 的终端里
+cd ~ && curl -O http://PC_IP:8000/dsh-role-card-1.8.1.tgz
+dsh plugin --profile web add ./dsh-role-card-1.8.1.tgz
+# 然后重启 Web 服务 → 127.0.0.1:3080 → 左侧栏「角色卡」
+```
+
+私有仓库要走带凭据的 git URL（`https://<user>:<token>@github.com/...#v1.8.1`），改源码则用 `link:` 软链。三种方式的完整流程、验证命令、故障对照表在 **[docs/MOBILE.md](docs/MOBILE.md)**。
 
 ## 快速上手
 

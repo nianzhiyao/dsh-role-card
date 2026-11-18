@@ -2528,13 +2528,17 @@ export function registerApi(ctx, token, service, chat) {
     }
 
     webCtx.effect(() => webCtx.webServer.register(route), 'role-card: api')
-    webCtx.effect(
-      () =>
-        webCtx.webServer.tapIndex((html) =>
-          html.replace('<head>', `<head><script>window.__DSH_ROLE_CARD__=${JSON.stringify({ token })}</script>`),
-        ),
-      'role-card: token injection',
-    )
+    // Older hosts (and some mobile builds) expose no tapIndex: the panel then
+    // falls back to the 'ui' auth token, which the route above already accepts.
+    if (typeof webCtx.webServer.tapIndex === 'function') {
+      webCtx.effect(
+        () =>
+          webCtx.webServer.tapIndex((html) =>
+            html.replace('<head>', `<head><script>window.__DSH_ROLE_CARD__=${JSON.stringify({ token })}</script>`),
+          ),
+        'role-card: token injection',
+      )
+    }
   })
 }
 
