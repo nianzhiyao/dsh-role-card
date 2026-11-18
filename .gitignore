@@ -9,7 +9,8 @@ state.json
 lan.json
 chat/
 novels/
-expand-prompt.md
+# 只挡仓库根目录和我自己那份；examples/ 里的示例提示词要入库
+/expand-prompt.md
 
 # 编辑器的临时备份 / 我本地迭代留下的副本
 *.bak
