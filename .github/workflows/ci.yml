@@ -1,0 +1,29 @@
+name: check
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: node ${{ matrix.node }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 自检（语法 / 导出 / 版本一致性 / 提示词契约 / 纯净性）
+        run: node scripts/check.mjs
+
+      - name: package.json 可解析且 files 白名单有效
+        run: npm pack --dry-run

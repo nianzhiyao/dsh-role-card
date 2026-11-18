@@ -1,0 +1,172 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/yugege123/dsh-role-card/examples/state.schema.json",
+  "title": "dsh-role-card state.json",
+  "description": "~/.dsh/dsh-role-card/state.json 的结构。插件读盘时会 normalize：非法卡（无 id 或正文为空）丢弃，卡数截断到 200，activeId 指向不存在的卡时置空。",
+  "type": "object",
+  "required": ["version", "activeId", "cards"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "activeId": {
+      "type": ["string", "null"],
+      "description": "当前激活的卡 id；没有激活卡时为 null"
+    },
+    "cards": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/definitions/card" }
+    }
+  },
+  "definitions": {
+    "card": {
+      "type": "object",
+      "required": ["id", "name", "body", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "crypto.randomUUID()，创建后不变"
+        },
+        "name": {
+          "type": "string",
+          "description": "显示名。空白时存为「未命名角色」",
+          "maxLength": 200
+        },
+        "body": {
+          "type": "string",
+          "description": "markdown 正文，上限 400KB，永不改写",
+          "maxLength": 409600
+        },
+        "createdAt": { "type": "integer", "minimum": 0 },
+        "updatedAt": { "type": "integer", "minimum": 0 },
+        "chatSessionId": {
+          "type": ["string", "null"],
+          "description": "早期 Agent 路线留下的会话 id；直连模式下恒为 null，保留只为兼容旧档"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["adult", "normal"],
+          "default": "adult",
+          "description": "内容模式：adult 按尺度档写；normal 是硬闸门，不写任何性内容。老档缺字段时按 adult 处理"
+        },
+        "tone": {
+          "type": "string",
+          "enum": ["none", "hint", "soft", "explicit", "hard"],
+          "default": "soft",
+          "description": "尺度：无 / 暗示 / 含情 / 露骨 / 极致。缺省/非法值按 soft"
+        },
+        "pace": {
+          "type": "string",
+          "enum": ["slow", "steady", "direct"],
+          "default": "direct",
+          "description": "节奏：慢热 / 自然 / 直接"
+        },
+        "style": {
+          "type": "string",
+          "enum": ["rp", "novel", "chat", "script", "diary"],
+          "default": "novel",
+          "description": "文风：角色扮演 / 小说体 / 聊天体 / 剧本体 / 日记体"
+        },
+        "ageMode": {
+          "type": "string",
+          "enum": ["adult", "original"],
+          "default": "adult",
+          "description": "年龄处理：成年化 / 照原文"
+        },
+        "model": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "卡片级模型覆盖；null = 跟随自动路由"
+        }
+      }
+    },
+    "novel": {
+      "title": "novels/<cardId>.json",
+      "description": "小说卡绑定的原著章节。每轮只注入当前章前 9000 字，章节原文不进 state.json。",
+      "type": "object",
+      "required": ["title", "chapters", "current", "cardId"],
+      "properties": {
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "source": { "type": "string" },
+        "kind": { "type": "string", "enum": ["novel"] },
+        "chars": { "type": "integer", "minimum": 0 },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["no", "title", "text"],
+            "properties": {
+              "no": { "type": "integer", "minimum": 1 },
+              "title": { "type": "string" },
+              "text": { "type": "string", "maxLength": 40000 }
+            }
+          }
+        },
+        "current": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "当前章序号（从 1 开始）"
+        },
+        "plan": {
+          "type": "object",
+          "description": "续导计划：total 是站点声称的全书章数，imported 是本批已导入章数",
+          "properties": {
+            "total": { "type": "integer", "minimum": 1 },
+            "imported": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "cardId": { "type": "string" },
+        "importedAt": { "type": "string" }
+      }
+    },
+    "chatHistory": {
+      "title": "chat/<cardId>.json",
+      "description": "单卡对话历史。写入串行（tmp + rename），清空时改名成 .deleted-<时间戳>。",
+      "type": "object",
+      "required": ["version", "messages"],
+      "properties": {
+        "version": { "type": "integer", "const": 1 },
+        "messages": {
+          "type": "array",
+          "maxItems": 300,
+          "items": {
+            "type": "object",
+            "required": ["role", "text"],
+            "properties": {
+              "role": { "type": "string", "enum": ["user", "assistant"] },
+              "text": { "type": "string" },
+              "at": { "type": "integer" },
+              "opening": {
+                "type": "boolean",
+                "description": "「开场」种子消息，面板显示为「（开场）」"
+              },
+              "source": {
+                "type": "object",
+                "description": "assistant 消息的路由来源",
+                "properties": {
+                  "kind": { "type": "string" },
+                  "provider": { "type": "string" },
+                  "model": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "lanState": {
+      "title": "lan.json",
+      "description": "手机访问桥的口令与端口，路径可用 DSH_ROLE_CARD_LAN_STATE 覆盖。不要提交到版本库。",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string", "minLength": 1 },
+        "port": { "type": "integer", "minimum": 0, "maximum": 65535 }
+      }
+    }
+  }
+}

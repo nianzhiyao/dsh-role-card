@@ -1,0 +1,5 @@
+# bundle patch: insert only this plugin's row; `name` is the package name and the loader
+# resolves the host half through package.json (main -> ./index.js).
+- insert:
+    - id: dsh-role-card
+      name: 'dsh-role-card'

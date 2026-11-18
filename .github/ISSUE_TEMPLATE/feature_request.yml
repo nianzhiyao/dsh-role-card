@@ -1,0 +1,55 @@
+name: 功能请求
+description: 想要面板多一个按钮、导入多认一种站点、提示词换一种写法
+title: "[feat] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这个项目的定位是「左侧栏粘一张卡就能演」，所以功能请求请先说清**它解决哪一步的摩擦**——不解决摩擦的功能很可能被放在 `examples/` 里当可替换件，而不是进主流程。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 现在卡在哪一步
+      description: 具体到操作动作，不要只写「希望更好用」
+      placeholder: |
+        每次导入小说都要先手动开一个空卡，再点小说导入，
+        不能直接从手机上传一个 epub。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你想要的形态
+      description: 界面在哪、点了发生什么、数据存哪
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 你试过的替代做法
+      description: 包括「现在怎么绕过这件事」——很多需求已经有绕法，只是没写进文档
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 影响范围
+      options:
+        - 只影响 UI（面板 / 布局 / 文案）
+        - 动到 HTTP API（要同步更新 docs/API.md）
+        - 动到提示词契约（要同步更新 docs/PROMPT-CONTRACT.md）
+        - 动到存储格式（state.json / chat / novels，要考虑旧档兼容）
+        - 新增外部依赖（默认会被质疑：这个项目刻意保持零构建、零依赖）
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: 你愿意自己实现吗
+      options:
+        - label: 我可以提 PR（先看 CONTRIBUTING.md）
+        - label: 我可以提供示例卡 / 测试用的链接

@@ -1,0 +1,85 @@
+{
+  "name": "dsh-role-card",
+  "version": "1.8.0",
+  "private": false,
+  "type": "module",
+  "main": "./index.js",
+  "description": "DeepSeek Harness 侧边栏角色卡插件：粘一张卡就开演，直连模型对话，支持链接/PNG 酒馆卡导入、AI 扩写、小说分章推进与手机访问。",
+  "license": "MIT",
+  "author": {
+    "name": "YG",
+    "url": "https://github.com/yugege123"
+  },
+  "contributors": [],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yugege123/dsh-role-card.git"
+  },
+  "homepage": "https://github.com/yugege123/dsh-role-card#readme",
+  "bugs": {
+    "url": "https://github.com/yugege123/dsh-role-card/issues"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "exports": {
+    "./client": "./client.js",
+    "./import": "./import.js",
+    "./lan": "./lan.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "import.js",
+    "lan.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale/*.json",
+    "docs",
+    "examples",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node scripts/check.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "role-play",
+    "roleplay",
+    "persona",
+    "role-card",
+    "character-card",
+    "sidebar",
+    "web",
+    "novel"
+  ]
+}

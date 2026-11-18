@@ -1,0 +1,104 @@
+name: Bug 报告
+description: 面板不显示、导入失败、角色不像卡里的人、手机连不上——都走这里
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前先确认三件事：
+
+        1. 已经**重启宿主**（`dsh web` 停掉再起）——客户端脚本是启动时下发的，改完不重启会看到旧版本；
+        2. `npm run check` 能过（如果你改过源码）；
+        3. 宿主终端里 `[dsh-role-card]` 开头的日志你贴出来了。
+
+        > 请勿粘贴角色卡正文、对话内容或 `~/.dsh` 下的任何文件——里面有你的私密内容。只贴报错与版本信息。
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 出问题的部分
+      options:
+        - 面板显示 / 布局（侧边栏打不开、样式错乱、窄屏）
+        - 保存卡片（保存失败、卡不见了、正文被截断）
+        - 对话（不出字、报错、回复像助手不像角色、格式不对）
+        - 提示词行为（尺度不对、节奏被拖延、年龄处理、写法不对）
+        - 链接导入（角色卡站点 / PNG 卡 / 抓不到内容）
+        - 小说导入（拆章不全、章节乱序、下一章没反应）
+        - AI 扩写（输出结构不对、太短、改了原素材）
+        - 手机访问（打不开、口令页出不来、cookie 不生效、二维码是空的）
+        - 模型路由（用的是哪个模型、回退到了别的模型）
+        - 安装 / 加载（宿主起不来、bundle 没插入、报模块找不到）
+        - 其它
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 实际现象 + 你期望的现象。有报错就贴原文，不要改写。
+      placeholder: |
+        点「保存」后卡片没有出现在列表里，宿主终端打印：
+        [dsh-role-card] api error: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 面板 → 新建角色卡
+        2. 粘入一张卡，名字留空
+        3. 点保存
+        4. 列表仍是空态
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: 插件版本
+      description: 面板「刷新」按钮旁，或 `package.json` 的 version
+      placeholder: 1.8.0
+    validations:
+      required: true
+
+  - type: input
+    id: host-version
+    attributes:
+      label: 宿主版本 / 系统
+      description: DSH 版本、Node 版本、操作系统
+      placeholder: DSH 0.x / node 24.14.1 / Windows 11
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: 安装方式
+      options:
+        - profile 里 link 本地目录（开发）
+        - 从 GitHub 装
+        - 从 npm 装
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 宿主日志
+      description: 只贴 `[dsh-role-card]` 相关行
+      render: shell
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已重启过宿主
+          required: true
+        - label: 我没有在正文里粘贴角色卡内容、对话内容或 `~/.dsh` 下的文件
+          required: true
