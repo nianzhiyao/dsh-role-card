@@ -1,6 +1,6 @@
 {
   "name": "dsh-role-card",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "private": false,
   "type": "module",
   "main": "./index.js",
@@ -28,6 +28,8 @@
     "linux"
   ],
   "exports": {
+    ".": "./index.js",
+    "./index.js": "./index.js",
     "./client": "./client.js",
     "./import": "./import.js",
     "./lan": "./lan.js",

@@ -4,6 +4,15 @@
 
 > 1.0.0 – 1.7.3 的条目根据开发过程中的备份与提交记录整理；1.7.4 起的条目与实际发布一一对应。
 
+## [1.8.2] — 2026-11-18
+
+装得上、加载不起来的问题：`exports` 缺 `"."` 主入口。
+
+### 修复
+
+- `package.json` 的 `exports` 补齐 `".": "./index.js"`（以及 `"./index.js"`）。宿主要用裸包名 `import('dsh-role-card')` 加载插件，而 Node 的规则是**只要声明了 `exports`、里面又没有 `"."`，裸包名解析就直接失败**——报 `ERR_PACKAGE_PATH_NOT_EXPORTED: No "exports" main defined`。桌面宿主恰好走的是带路径的解析所以没暴露，DSHM（dsh 0.2.0-rc.2）上装完即中止。`main` 字段本身没问题，问题只在 `exports` 的优先级盖过了它。
+- `scripts/check.mjs` 增加两条断言堵住这类回归：`exports` 必须定义 `"."` 且指向真实存在的文件；`./client` / `./import` / `./lan` 三个子入口必须在位（共 58 项）。
+
 ## [1.8.1] — 2026-11-18
 
 手机端（DSHM / 任意 dsh 宿主）安装支持，以及一处老宿主兼容性修正。

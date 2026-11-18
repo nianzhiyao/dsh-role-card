@@ -177,6 +177,25 @@ if (pkg !== null) {
     assert(match[1] === pkg.version, `client.js 是 ${match[1]}，package.json 是 ${pkg.version}`)
     return pkg.version
   })
+  check('exports 定义了 "." 主入口', () => {
+    // 宿主用裸包名 import('dsh-role-card') 加载插件；只要 package.json 有 exports
+    // 却没有 "." 这一项，Node 会直接抛 ERR_PACKAGE_PATH_NOT_EXPORTED，装得上但加载不起来。
+    const exportsMap = pkg.exports
+    assert(exportsMap !== undefined && exportsMap !== null, 'package.json 缺 exports')
+    const entry = typeof exportsMap === 'string' ? exportsMap : exportsMap['.']
+    assert(entry !== undefined, 'exports 里没有 "." —— 裸包名 import 会报 ERR_PACKAGE_PATH_NOT_EXPORTED')
+    const main = typeof entry === 'string' ? entry : entry?.import ?? entry?.default
+    assert(typeof main === 'string', 'exports["."] 没有可用的入口路径')
+    assert(existsSync(join(ROOT, main.replace(/^\.\//, ''))), `exports["."] 指向的 ${main} 不存在`)
+    return main
+  })
+  check('exports 暴露 client / import / lan 三个子入口', () => {
+    const exportsMap = pkg.exports ?? {}
+    for (const key of ['./client', './import', './lan']) {
+      assert(exportsMap[key] !== undefined, `exports 缺 ${key}`)
+    }
+    return './client ./import ./lan'
+  })
   check('cordis.patch.yml 与包名一致', () => {
     const yml = readText('cordis.patch.yml')
     assert(yml.includes(`- id: ${pkg.name}`), `patch 里没有 "- id: ${pkg.name}"`)
