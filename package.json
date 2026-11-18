@@ -1,10 +1,10 @@
 {
   "name": "dsh-role-card",
-  "version": "1.8.3",
+  "version": "1.8.4",
   "private": false,
   "type": "module",
   "main": "./index.js",
-  "description": "DeepSeek Harness 侧边栏角色卡插件：粘一张卡就开演，直连模型对话，支持链接/PNG 酒馆卡导入、AI 扩写、小说分章推进与手机访问。",
+  "description": "DeepSeek Harness 插件：手机上连局域网就能控制这台电脑上的 DSH 工作区（接着聊、投任务、看执行），也是侧边栏角色卡 —— 粘一张卡就开演，支持链接/PNG 酒馆卡导入、AI 扩写与小说分章推进。",
   "license": "MIT",
   "author": {
     "name": "YG",
@@ -76,13 +76,14 @@
     "dsh-plugin",
     "deepseek-harness",
     "cordis",
-    "role-play",
-    "roleplay",
-    "persona",
     "role-card",
     "character-card",
+    "novel",
+    "role-play",
     "sidebar",
     "web",
-    "novel"
+    "lan",
+    "mobile",
+    "remote-control"
   ]
 }

@@ -14,10 +14,13 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const h = React.createElement
 
-    const VERSION = '1.8.3'
+    const VERSION = '1.8.4'
     const PANEL_ID = 'role-card'
     const API = '/api/dsh-role-card'
-    const POLL_MS = 1200
+    const POLL_MS = 2500
+    const POLL_HIDDEN_MS = 8000
+    const API_TIMEOUT_MS = 20000
+    const IMPORT_PREF_KEY = 'drc-import-prefs'
 
     const token = () => {
       const injected = window.__DSH_ROLE_CARD__
@@ -44,19 +47,35 @@ window.__ModuleLoader__.load({
         })
     }
 
-    const api = async (method, path, body) => {
+    const api = async (method, path, body, timeoutMs) => {
+      const limit = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : API_TIMEOUT_MS
+      const controller = typeof AbortController === 'function' ? new AbortController() : null
       const init = { method, headers: { 'x-dsh-role-card': token() } }
+      if (controller !== null) init.signal = controller.signal
       if (body !== undefined) {
         init.headers['content-type'] = 'application/json; charset=utf-8'
         init.body = JSON.stringify(body)
       }
       let response
+      let timer = null
+      if (controller !== null) {
+        timer = setTimeout(() => {
+          try { controller.abort() } catch (error) { void error }
+        }, limit)
+      }
       try {
         response = await fetch(API + path, init)
       } catch (error) {
-        const failure = new Error('\u8FDE\u4E0D\u4E0A\u89D2\u8272\u5361\u670D\u52A1\uFF1A' + String(error && error.message ? error.message : error))
+        const aborted = error !== null && error !== undefined && error.name === 'AbortError'
+        const failure = new Error(
+          aborted
+            ? '\u8BF7\u6C42\u8D85\u65F6\uFF08\u7B49\u4E86 ' + Math.round(limit / 1000) + ' \u79D2\uFF09\uFF0C\u5DF2\u505C\u6B62\u7B49\u5F85\uFF1A' + method + ' ' + path + '\n\u53EF\u80FD\u662F\u4E3B\u673A\u5728\u91CD\u542F\uFF0C\u5237\u65B0\u9875\u9762\u540E\u91CD\u8BD5\u3002'
+            : '\u8FDE\u4E0D\u4E0A\u89D2\u8272\u5361\u670D\u52A1\uFF1A' + String(error && error.message ? error.message : error),
+        )
         report(method + ' ' + path, failure)
         throw failure
+      } finally {
+        if (timer !== null) clearTimeout(timer)
       }
       const text = await response.text()
       let payload = null
@@ -199,12 +218,12 @@ window.__ModuleLoader__.load({
       '.drc-selbtn em{font-style:normal;max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.drc-caret{width:0;height:0;border-left:3.5px solid transparent;border-right:3.5px solid transparent;border-top:4.5px solid currentColor;opacity:.45;transition:transform .12s ease}',
       '.drc-sel.on .drc-caret{transform:rotate(180deg)}',
-      '.drc-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:60;min-width:110px;max-height:264px;overflow-y:auto;padding:4px;border-radius:12px;border:1px solid var(--dsw-alias-border-l2,#e3e4e8);background:var(--dsw-alias-bg-base,#fff);box-shadow:0 12px 30px rgba(15,18,24,.16),0 2px 6px rgba(15,18,24,.08)}',
+      '.drc-menu{position:fixed;z-index:9000;min-width:110px;max-height:264px;overflow-y:auto;padding:4px;border-radius:12px;border:1px solid var(--dsw-alias-border-l2,#e3e4e8);background:var(--dsw-alias-bg-base,#fff);box-shadow:0 12px 30px rgba(15,18,24,.16),0 2px 6px rgba(15,18,24,.08)}',
       '.drc-opt{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:7px 9px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-primary,#1f2226);font-size:12.5px;text-align:left;cursor:pointer;font-family:inherit}',
       '.drc-opt:hover{background:var(--dsw-alias-bg-layer-2,rgba(17,20,26,.06))}',
       '.drc-opt.on{background:var(--dsw-alias-bg-layer-2,rgba(17,20,26,.06));font-weight:600}',
       '.drc-opt.on:after{content:"";flex:0 0 auto;width:5px;height:5px;border-radius:50%;background:var(--dsw-alias-label-secondary,#6b7280)}',
-      '@media (max-width:600px){',
+      '@media (max-width:900px), (pointer: coarse) and (max-width:1180px){',
       '  .drc-root{--drc-fs:15px;--drc-lh:1.8;--drc-cfs:15px}',
       '  .drc-head{padding:8px 10px;gap:6px}',
       '  .drc-title{font-size:13px}',
@@ -301,11 +320,22 @@ window.__ModuleLoader__.load({
       const ctx = React.useContext(PanelCtx)
       const [snapshot, setSnapshot] = React.useState({ activeId: null, cards: [] })
       const [draft, setDraft] = React.useState(null)
-      const [chat, setChat] = React.useState({ live: false, busy: false, error: null, messages: [] })
+      const [chat, setChat] = React.useState({ live: false, busy: false, error: null, partial: '', messages: [] })
       const [chatId, setChatId] = React.useState(null)
       const [input, setInput] = React.useState('')
       const [link, setLink] = React.useState('')
       const [busy, setBusy] = React.useState('')
+      const [busySeconds, setBusySeconds] = React.useState(0)
+      React.useEffect(() => {
+        if (busy === '') {
+          setBusySeconds(0)
+          return undefined
+        }
+        const started = Date.now()
+        setBusySeconds(0)
+        const timer = setInterval(() => setBusySeconds(Math.round((Date.now() - started) / 1000)), 1000)
+        return () => clearInterval(timer)
+      }, [busy])
       const [notice, setNotice] = React.useState(null)
       // 提示是给当前这一步看的：几秒后自动消失，切界面时也一起清掉，
       // 否则回到列表页会再看到上一条，看起来像重复显示。
@@ -338,25 +368,48 @@ window.__ModuleLoader__.load({
       // 手机上的「⋯」菜单，只在窄屏出现（宽屏三个动作直接摆在标题栏里）。
       const [headOpen, setHeadOpen] = React.useState(false)
       const [expandReq, setExpandReq] = React.useState('')
-      const [importMode, setImportMode] = React.useState('normal')
-      const [importTone, setImportTone] = React.useState('soft')
-      const [importStyle, setImportStyle] = React.useState('novel')
+      const readPref = (field, fallback) => {
+        try {
+          const raw = window.localStorage.getItem(IMPORT_PREF_KEY)
+          const parsed = raw === null ? null : JSON.parse(raw)
+          const value = parsed === null || parsed === undefined ? null : parsed[field]
+          return typeof value === 'string' ? value : fallback
+        } catch (error) {
+          return fallback
+        }
+      }
+      const [importMode, setImportMode] = React.useState(() => readPref('mode', 'normal'))
+      const [importTone, setImportTone] = React.useState(() => readPref('tone', 'soft'))
+      const [importStyle, setImportStyle] = React.useState(() => readPref('style', 'novel'))
+      React.useEffect(() => {
+        try {
+          window.localStorage.setItem(IMPORT_PREF_KEY, JSON.stringify({ mode: importMode, tone: importTone, style: importStyle }))
+        } catch (error) {
+          void error
+        }
+      }, [importMode, importTone, importStyle])
       const [novelBusy, setNovelBusy] = React.useState(false)
       const [novelScope, setNovelScope] = React.useState('fast')
       // 「全部导入」的后台补更进度：{ running, imported, total, error }
       const [novelJob, setNovelJob] = React.useState(null)
       const [openSel, setOpenSel] = React.useState(null)
+      const [selRect, setSelRect] = React.useState(null)
       React.useEffect(() => {
         if (openSel === null) return undefined
         if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined
+        const onView = () => setOpenSel(null)
         const onDoc = (event) => {
           const hit = event !== null && event !== undefined ? event.target : undefined
           if (hit !== null && hit !== undefined && typeof hit.closest === 'function' && hit.closest('.drc-sel') !== null) return
           setOpenSel(null)
         }
+        window.addEventListener('scroll', onView, true)
+        window.addEventListener('resize', onView)
         document.addEventListener('mousedown', onDoc, true)
         document.addEventListener('touchstart', onDoc, true)
         return () => {
+          window.removeEventListener('scroll', onView, true)
+          window.removeEventListener('resize', onView)
           document.removeEventListener('mousedown', onDoc, true)
           document.removeEventListener('touchstart', onDoc, true)
         }
@@ -375,6 +428,7 @@ window.__ModuleLoader__.load({
       const [lanBusy, setLanBusy] = React.useState('')
       const logRef = React.useRef(null)
       const stuckRef = React.useRef(true)
+      const busyRef = React.useRef(false)
 
       const applySnapshot = (payload) => {
         if (payload === null || payload === undefined) return
@@ -496,10 +550,14 @@ window.__ModuleLoader__.load({
         }
       }
 
+      React.useEffect(() => {
+        busyRef.current = chat.busy === true
+      }, [chat.busy])
+
       const loadChat = React.useCallback(
         async (id) => {
           if (typeof id !== 'string' || id.length === 0) {
-            setChat({ live: false, busy: false, error: null, messages: [] })
+            setChat({ live: false, busy: false, error: null, partial: '', messages: [] })
             return
           }
           try {
@@ -510,6 +568,7 @@ window.__ModuleLoader__.load({
                 busy: payload.busy === true,
                 error: payload.error === null || payload.error === undefined ? null : String(payload.error),
                 messages: Array.isArray(payload.messages) ? payload.messages : [],
+                partial: typeof payload.partial === 'string' ? payload.partial : '',
               })
             } else if (payload !== null && payload.ok === false) {
               setChat({ live: false, busy: false, error: String(payload.error ?? ''), messages: [] })
@@ -530,8 +589,14 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (typeof targetId !== 'string') return undefined
         let stopped = false
+        let last = 0
         const timer = setInterval(() => {
           if (stopped) return
+          const hidden = typeof document !== 'undefined' && document !== null && document.hidden === true
+          const gap = hidden ? POLL_HIDDEN_MS : busyRef.current === true ? 700 : POLL_MS
+          const now = Date.now()
+          if (now - last < gap) return
+          last = now
           void loadChat(targetId)
         }, POLL_MS)
         return () => {
@@ -623,7 +688,7 @@ window.__ModuleLoader__.load({
         }
         setBusy('import')
         try {
-          const payload = await api('POST', '/import', { url, mode: importMode, tone: importTone, style: importStyle })
+          const payload = await api('POST', '/import', { url, mode: importMode, tone: importTone, style: importStyle }, 90000)
           if (payload === null || payload.ok === false) {
             setNotice({ kind: 'err', text: String(payload && payload.error ? payload.error : '\u5BFC\u5165\u5931\u8D25') })
             return
@@ -658,7 +723,7 @@ window.__ModuleLoader__.load({
         setBusy('send')
         setInput('')
         try {
-          const payload = await api('POST', '/chat', { id, text })
+          const payload = await api('POST', '/chat', { id, text }, 300000)
           if (payload === null || payload.ok === false) {
             const message = String(payload && payload.error ? payload.error : '\u53D1\u9001\u5931\u8D25')
             setNotice({ kind: 'err', text: message })
@@ -711,7 +776,7 @@ window.__ModuleLoader__.load({
             mode: importMode,
             tone: importTone,
             style: importStyle,
-          })
+          }, 300000)
           if (payload === null || payload.ok === false) {
             setNotice({ kind: 'err', text: '\u6269\u5199\u5931\u8D25\uFF1A' + String(payload && payload.error ? payload.error : '\u672A\u77E5\u539F\u56E0') })
             return
@@ -746,7 +811,7 @@ window.__ModuleLoader__.load({
               : '正在抓前 40 章原文…一会儿就出卡，后面的章节在对话界面点「继续导入」一批批补。',
         })
         try {
-          const payload = await api('POST', '/novel', { url, mode: importMode, tone: importTone, style: importStyle, full: novelScope === 'full' })
+          const payload = await api('POST', '/novel', { url, mode: importMode, tone: importTone, style: importStyle, full: novelScope === 'full' }, 240000)
           if (payload === null || payload.ok === false) {
             setNotice({ kind: 'err', text: '\u5C0F\u8BF4\u5BFC\u5165\u5931\u8D25\uFF1A' + String(payload && payload.error ? payload.error : '\u672A\u77E5\u539F\u56E0') })
             return
@@ -791,7 +856,7 @@ window.__ModuleLoader__.load({
         setBusy('novel')
         setNotice({ kind: 'ok', text: '正在问站点这本更到第几章了…' })
         try {
-          const payload = await api('POST', '/novel/extend', { id: chatCard.id, mode: 'check' })
+          const payload = await api('POST', '/novel/extend', { id: chatCard.id, mode: 'check' }, 240000)
           if (payload === null || payload.ok === false) {
             setNotice({ kind: 'err', text: String(payload && payload.error ? payload.error : '检查更新失败') })
             return
@@ -821,7 +886,7 @@ window.__ModuleLoader__.load({
         setBusy('novel')
         setNotice({ kind: 'ok', text: '正在抓第 ' + fromNo + ' 章 到 第 ' + toNo + ' 章（全书 ' + bookTotal + ' 章）…' })
         try {
-          const payload = await api('POST', '/novel/extend', { id: chatCard.id })
+          const payload = await api('POST', '/novel/extend', { id: chatCard.id }, 240000)
           if (payload === null || payload.ok === false) {
             setNotice({ kind: 'err', text: '续导失败：' + String(payload && payload.error ? payload.error : '未知原因') })
             return
@@ -889,7 +954,7 @@ window.__ModuleLoader__.load({
             mode: importMode,
             tone: importTone,
             style: importStyle,
-          })
+          }, 300000)
           if (payload === null || payload.ok === false) {
             setNotice({ kind: 'err', text: '\u6269\u5199\u5931\u8D25\uFF1A' + String(payload && payload.error ? payload.error : '\u672A\u77E5\u539F\u56E0') })
             return
@@ -911,7 +976,7 @@ window.__ModuleLoader__.load({
         if (typeof id !== 'string' || id.length === 0) return
         setBusy('open')
         try {
-          const payload = await api('POST', '/open', { id })
+          const payload = await api('POST', '/open', { id }, 300000)
           if (payload === null || payload.ok === false) {
             setNotice({ kind: 'err', text: String(payload && payload.error ? payload.error : '\u5F00\u573A\u5931\u8D25') })
             return
@@ -986,6 +1051,37 @@ window.__ModuleLoader__.load({
       }
 
       // \u804A\u5929\u5DE5\u5177\u6761\u4E0A\u7684\u4E0B\u62C9\uFF1A\u4E00\u4E2A\u63A7\u4EF6\u7BA1\u4E00\u4E2A\u5B57\u6BB5\uFF0C\u5207\u5B8C\u7ACB\u523B\u5237\u65B0 section\u3002
+    /* 下拉菜单曾用 absolute 定位，被工具条的 overflow 和吸顶容器裁成半截，
+     * 看起来像"另一个界面的东西"。改成 viewport 固定定位：坐标在打开那一刻
+     * 按按钮的 rect 算，超出视口就往上翻，左右夹在视口里。 */
+    const readRect = (event) => {
+      try {
+        const node =
+          event !== null && event !== undefined
+            ? event.currentTarget !== undefined && event.currentTarget !== null
+              ? event.currentTarget
+              : event.target
+            : null
+        if (node === null || node === undefined || typeof node.getBoundingClientRect !== 'function') return null
+        const box = node.getBoundingClientRect()
+        return { left: box.left, top: box.top, bottom: box.bottom, width: box.width }
+      } catch (error) {
+        return null
+      }
+    }
+
+    const menuPos = (rect) => {
+      const vw = typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 1280
+      const vh = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 800
+      const width = rect === null || rect.width < 120 ? 138 : Math.round(rect.width)
+      const left = rect === null ? 12 : Math.max(8, Math.min(rect.left, vw - width - 8))
+      const style = { position: 'fixed', left: left + 'px', minWidth: width + 'px', zIndex: 9000 }
+      const below = rect === null ? 80 : rect.bottom + 6
+      if (rect !== null && below + 300 > vh) style.bottom = Math.max(10, vh - rect.top + 6) + 'px'
+      else style.top = below + 'px'
+      return style
+    }
+
     const DropSelect = (props) => {
       const choices = Array.isArray(props.choices) ? props.choices : []
       const disabled = props.disabled === true
@@ -1020,7 +1116,7 @@ window.__ModuleLoader__.load({
         open
           ? h(
               'div',
-              { className: 'drc-menu', role: 'listbox' },
+              { className: 'drc-menu', role: 'listbox', style: menuPos(props.rect === undefined ? null : props.rect) },
               choices.map((entry) =>
                 h(
                   'button',
@@ -1042,6 +1138,12 @@ window.__ModuleLoader__.load({
           : null,
       )
     }
+      const toggleSel = (field, event) => {
+        const next = openSel === field ? null : field
+        setOpenSel(next)
+        setSelRect(next === null ? null : readRect(event))
+      }
+
       const selector = (label, field, card, choices, disabled) => {
         const current = choices.some((entry) => entry[0] === card[field]) ? card[field] : choices[0][0]
         return DropSelect({
@@ -1051,8 +1153,9 @@ window.__ModuleLoader__.load({
           value: current,
           choices: choices,
           disabled: disabled === true,
+          rect: selRect,
           open: openSel === field,
-          onToggle: () => setOpenSel(openSel === field ? null : field),
+          onToggle: (event) => toggleSel(field, event),
           onPick: (value) => {
             setOpenSel(null)
             void setCardField(card, field, value)
@@ -1303,9 +1406,28 @@ window.__ModuleLoader__.load({
         ),
       )
 
+      const BUSY_LABEL = {
+        import: '\u6B63\u5728\u6293\u94FE\u63A5',
+        expand: 'AI \u6B63\u5728\u6269\u5199\uFF08\u8981\u7B49\u6A21\u578B\uFF0C\u6700\u957F 5 \u5206\u949F\uFF09',
+        novel: '\u6B63\u5728\u6293\u5C0F\u8BF4\u7AE0\u8282',
+        save: '\u6B63\u5728\u4FDD\u5B58',
+        chat: '\u6B63\u5728\u751F\u6210',
+        open: '\u6B63\u5728\u5F00\u573A',
+      }
+      const busyNode =
+        busy === ''
+          ? null
+          : h(
+              'div',
+              { className: 'drc-notice' },
+              (BUSY_LABEL[busy] === undefined ? '\u6B63\u5728\u5904\u7406' : BUSY_LABEL[busy]) +
+                '\u2026 ' +
+                String(busySeconds) +
+                's\u3002\u5982\u679C\u4E00\u76F4\u4E0D\u52A8\uFF0C\u5237\u65B0\u9875\u9762\u91CD\u8BD5\uFF08\u4E3B\u673A\u91CD\u542F\u540E\u65E7\u9875\u9762\u4F1A\u65AD\uFF09\u3002',
+            )
       const noticeNode =
         notice === null
-          ? null
+          ? busyNode
           : h('div', { className: 'drc-notice' + (notice.kind === 'err' ? ' err' : '') }, String(notice.text))
 
       if (draft !== null) {
@@ -1433,10 +1555,11 @@ window.__ModuleLoader__.load({
             value: importMode,
             choices: MODE_CHOICES,
             disabled: false,
+            rect: selRect,
             open: openSel === 'import-mode',
             field: 'mode',
             hint: '\u5EFA\u5361\u7528\u54EA\u79CD\u6A21\u5F0F\uFF1A\u6210\u4EBA=\u5141\u8BB8\u6309\u5C3A\u5EA6\u5199\u6027\u63CF\u5199\uFF1B\u666E\u901A=\u5B8C\u5168\u4E0D\u5199\u6027\u5185\u5BB9\uFF08\u5BFC\u5165\u666E\u901A\u5C0F\u8BF4\u3001\u666E\u901A\u89D2\u8272\u5C31\u9009\u5B83\uFF09',
-            onToggle: () => setOpenSel(openSel === 'import-mode' ? null : 'import-mode'),
+            onToggle: (event) => toggleSel('import-mode', event),
             onPick: (next) => {
               setOpenSel(null)
               setImportMode(next)
@@ -1447,10 +1570,11 @@ window.__ModuleLoader__.load({
             value: importTone,
             choices: TONE_CHOICES,
             disabled: importMode === 'normal',
+            rect: selRect,
             open: openSel === 'import-tone',
             field: 'tone',
             hint: '\u5EFA\u5361\u65F6\u9ED8\u8BA4\u7684\u5C3A\u5EA6\u6863\uFF1A\u65E0/\u6697\u793A/\u542B\u60C5/\u9732\u9AA8/\u6781\u81F4\uFF08\u666E\u901A\u6A21\u5F0F\u4E0B\u9501\u5B9A\uFF09',
-            onToggle: () => setOpenSel(openSel === 'import-tone' ? null : 'import-tone'),
+            onToggle: (event) => toggleSel('import-tone', event),
             onPick: (next) => {
               setOpenSel(null)
               setImportTone(next)
@@ -1461,10 +1585,11 @@ window.__ModuleLoader__.load({
             value: importStyle,
             choices: STYLE_CHOICES,
             disabled: false,
+            rect: selRect,
             open: openSel === 'import-style',
             field: 'style',
             hint: '建卡时默认的文风：角色扮演/小说体/聊天体/剧本体/日记体',
-            onToggle: () => setOpenSel(openSel === 'import-style' ? null : 'import-style'),
+            onToggle: (event) => toggleSel('import-style', event),
             onPick: (next) => {
               setOpenSel(null)
               setImportStyle(next)
@@ -1475,10 +1600,11 @@ window.__ModuleLoader__.load({
             value: novelScope,
             choices: SCOPE_CHOICES,
             disabled: false,
+            rect: selRect,
             open: openSel === 'import-scope',
             field: 'novelScope',
             hint: '「小说导入」抓多少章：快速=只抓前 40 章，几秒出卡，后面在对话界面按 40 章一批续；全部=整本抓完（上千章的书要等两三分钟）',
-            onToggle: () => setOpenSel(openSel === 'import-scope' ? null : 'import-scope'),
+            onToggle: (event) => toggleSel('import-scope', event),
             onPick: (next) => {
               setOpenSel(null)
               setNovelScope(next)
@@ -1665,7 +1791,33 @@ window.__ModuleLoader__.load({
 
     const PanelHost = () => {
       const ctx = React.useContext(PanelCtx)
-      return h(RoleCardPanel, { key: 'role-card-panel', ctx })
+      // 面板里任何一处抛错，React 会把整棵子树摘掉 —— 主区就变成一片白，
+      // 用户看不出发生了什么。这里兜住，直接把错误显示出来，方便一眼定位。
+      try {
+        return h(RoleCardPanel, { key: 'role-card-panel', ctx })
+      } catch (error) {
+        const detail = error && error.message ? error.message : String(error)
+        try {
+          if (typeof console !== 'undefined' && console.error) console.error('[dsh-role-card] panel crashed:', error)
+        } catch (inner) {
+          void inner
+        }
+        return h(
+          'div',
+          { className: 'drc-root' },
+          h('div', { className: 'drc-head' }, h('div', { className: 'drc-title' }, '\u89D2\u8272\u5361')),
+          h(
+            'div',
+            { className: 'drc-body' },
+            h('div', { className: 'drc-notice err' }, '\u9762\u677F\u6E32\u67D3\u51FA\u9519\u4E86\uFF1A' + detail),
+            h(
+              'div',
+              { className: 'drc-hint' },
+              '\u5237\u65B0\u4E00\u4E0B\u9875\u9762\u8BD5\u8BD5\uFF1B\u5982\u679C\u4E00\u76F4\u8FD9\u6837\uFF0C\u628A\u8FD9\u884C\u6587\u5B57\u53D1\u7ED9\u6211\u3002',
+            ),
+          ),
+        )
+      }
     }
 
     const apply = (ctx) => {
@@ -1721,10 +1873,8 @@ window.__ModuleLoader__.load({
           () => h(PanelCtx.Provider, { value: ctx }, h(PanelHost)),
         ),
       )
-      // Boot beacon: the host half cannot otherwise tell "the browser half never
-      // ran" from "it ran and the panel is merely hidden". `GET /diag` reads the
-      // last report, so a device that shows no sidebar row can be triaged from
-      // the server side without a console.
+      // 启动信标：宿主半否则分不清「浏览器半从没跑过」和「跑了、面板只是没显示」。
+      // GET /diag 会读最近一次上报，所以设备上看不到侧栏时也能从服务端定位。
       try {
         void api('POST', '/hello', {
           source: 'client-ready',

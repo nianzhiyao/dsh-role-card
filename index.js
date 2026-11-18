@@ -803,7 +803,7 @@ export function createService() {
  * 面板内对话：一卡一个 Agent，角色段只挂在这个 Agent 的作用域里
  * ------------------------------------------------------------------ */
 
-function createChatService(ctx, cards) {
+export function createChatService(ctx, cards) {
   /** cardId -> { handle, busy, error, pending } */
   const live = new Map()
   /** cardId -> { busy, error, controller, messages } - the direct-LLM engine */
@@ -939,14 +939,30 @@ function createChatService(ctx, cards) {
         maxTokens: styleOf(card) === 'chat' ? 2200 : styleOf(card) === 'rp' ? 1600 : 4000,
       }
       if (signal !== null && signal !== undefined) options.signal = signal
+      let lastPartialAt = 0
+      partials.set(card.id, '')
       for await (const chunk of llm.stream(options)) {
         if (chunk === null || typeof chunk !== 'object') continue
         const kind = String(chunk.type ?? 'unknown')
         kinds.set(kind, (kinds.get(kind) ?? 0) + 1)
-        if (chunk.type === 'text-delta' && typeof chunk.text === 'string') text += chunk.text
+        if (chunk.type === 'text-delta' && typeof chunk.text === 'string') {
+          text += chunk.text
+          // 面板 700ms 轮一次，80ms 节流足够，别为每个 delta 都写一遍。
+          if (Date.now() - lastPartialAt > 80) {
+            lastPartialAt = Date.now()
+            partials.set(card.id, text)
+            notify(card.id, { text })
+          }
+        }
         if (chunk.type === 'usage') usage = chunk.usage ?? chunk
-        if (chunk.type === 'finish') reason = chunk.reason ?? null
+        if (chunk.type === 'finish') {
+          reason = chunk.reason ?? null
+          const failed = reason !== null && typeof reason === 'object' && reason.kind === 'error'
+          // 这类 finish 里没有 text-delta，只有失败原因；抛出去让外层走重试/回落。
+          if (failed) throw new Error('model finish error: ' + describeFailure(reason.failure ?? reason))
+        }
       }
+      partials.set(card.id, text)
       if (text.length === 0) {
         console.log('[dsh-role-card] empty turn', JSON.stringify({ route, kinds: [...kinds], reason, usage }))
       }
@@ -954,19 +970,65 @@ function createChatService(ctx, cards) {
     }
 
     const canFallBack = requested.model !== base.model
+    const retriable = (error) => /transport|TRANSPORT|ECONNRESET|ETIMEDOUT|socket hang up|fetch failed/i.test(describeFailure(error))
+    const attemptWithRetry = async (route) => {
+      try {
+        return await attempt(route)
+      } catch (error) {
+        if (!retriable(error)) throw error
+        // 账号通道偶尔抖一下就 transport failed，隔 700ms 再试一次基本就过了。
+        console.log('[dsh-role-card] transport error on', route.model, '- retrying once', describeFailure(error))
+        partials.set(card.id, '')
+        await new Promise((resolve) => setTimeout(resolve, 700))
+        return await attempt(route)
+      }
+    }
     try {
-      const result = await attempt(requested)
+      const result = await attemptWithRetry(requested)
       // An unknown model id surfaces as an empty turn rather than a throw, so an
       // empty answer from the preferred model also warrants one retry on the route.
       if (result.text.length === 0 && canFallBack) {
         console.log('[dsh-role-card] empty answer from', requested.model, '- retrying', base.model)
-        return await attempt(base)
+        return await attemptWithRetry(base)
       }
       return result
     } catch (error) {
       if (!canFallBack) throw error
       console.error('[dsh-role-card] turn failed on', requested.model, '- retrying', base.model, error)
-      return await attempt(base)
+      return await attemptWithRetry(base)
+    }
+  }
+
+  /* 直连引擎边生成边留一份，面板轮询 /chat 时就能看到正在长出来的字。 */
+  const partials = new Map()
+
+  /* 面板用 SSE 收增量：一张卡挂一组回调，生成时每 80ms 推一次，
+   * 结束时推 done。轮询仍在（作为兜底），但正常路径走这条。 */
+  const watchers = new Map()
+  const notify = (cardId, payload) => {
+    const set = watchers.get(cardId)
+    if (set === undefined) return
+    for (const listener of [...set]) {
+      try {
+        listener(payload)
+      } catch (error) {
+        void error
+      }
+    }
+  }
+
+  const subscribe = (cardId, listener) => {
+    let set = watchers.get(cardId)
+    if (set === undefined) {
+      set = new Set()
+      watchers.set(cardId, set)
+    }
+    set.add(listener)
+    return () => {
+      const current = watchers.get(cardId)
+      if (current === undefined) return
+      current.delete(listener)
+      if (current.size === 0) watchers.delete(cardId)
     }
   }
 
@@ -976,6 +1038,7 @@ function createChatService(ctx, cards) {
       busy: record.busy === true,
       error: record.error,
       messages: showMessages(record.messages.slice(-MAX_CHAT_MESSAGES)),
+      partial: typeof partials.get(cardId) === 'string' ? partials.get(cardId) : '',
       live: true,
     }
   }
@@ -989,6 +1052,7 @@ function createChatService(ctx, cards) {
     if (record.busy === true) throw new Error('角色正在回应上一条，稍等')
     record.busy = true
     record.error = null
+    partials.delete(cardId)
     const turn = { role: 'user', text, at: Date.now() }
     record.messages.push(turn)
     void persist(cardId, record.messages)
@@ -1007,12 +1071,17 @@ function createChatService(ctx, cards) {
           void persist(cardId, record.messages)
         }
       } catch (error) {
-        record.error = describeFailure(error) || String(error)
+        const detail = describeFailure(error) || String(error)
+        record.error = /transport|TRANSPORT|ECONNRESET|ETIMEDOUT|socket hang up/i.test(detail)
+          ? '模型服务这次没接上（transport）。已经自动重试过一次，还是这样就是账号通道在抖 —— 等两秒再发一次。详情：' + detail.slice(0, 240)
+          : detail
         // Drop the unanswered user line so a retry does not stack duplicates.
         if (record.messages.at(-1) === turn) record.messages.pop()
       } finally {
+        partials.delete(cardId)
         record.busy = false
         record.controller = null
+        notify(cardId, { done: true })
       }
     })()
     return dstate(cardId)
@@ -1544,6 +1613,7 @@ function createChatService(ctx, cards) {
     listAgents,
     pokeExisting,
     disposeAll,
+    subscribe,
     diagnostics: () => ({ route: resolveRoute(), candidates: collectRoutes(), live: [...live.keys()], direct: direct() }),
   }
 }
@@ -1767,6 +1837,24 @@ export function registerApi(ctx, token, service, chat) {
     })
     webCtx.effect(() => () => lan.stop(), 'role-card: lan lifecycle')
 
+    /* 宿主重启后把桥自动拉回来。
+     *
+     * 手机上那个页面是之前加载的，它只知道 `http://192.168.31.158:11902`。
+     * 宿主一重启，桥没了，页面再点任何按钮都只会安静地挂着 —— 用户看到的就是
+     * “点导入卡住”。所以把“上次是开着的”记进 lan.json，启动时直接恢复。 */
+    if (lanState.running === true) {
+      const resumePort = Number.isInteger(lanState.port) && lanState.port > 0 && lanState.port < 65536 ? lanState.port : undefined
+      const resume = async () => {
+        try {
+          await lan.start(resumePort)
+          writeLanState({ running: true, port: lan.status().port })
+        } catch (error) {
+          writeLanState({ running: false, lastError: String(error?.message ?? error) })
+        }
+      }
+      void resume()
+    }
+
     /* 二维码只是方便手机扫；没有 qrcode 依赖时降级成只给链接。
      *
      * 这个插件是从工作区源码目录（plugin-src）link 进 profile 的，Node 解析
@@ -1903,7 +1991,7 @@ export function registerApi(ctx, token, service, chat) {
               client: beacon,
               hints: [
                 'client 为 null：浏览器半从没执行到 apply —— 插件没进 boot roster，或 index.html 没注入令牌。',
-                "client.source 为 client-ready：客户端已加载并注册了 slot，面板只是没显示（窄屏请点侧栏抽屉）。",
+                'client.source 为 client-ready：客户端已加载并注册了 slot，面板只是没显示（窄屏请点侧栏抽屉）。',
                 'client.source 为 client-error：把 client.error 原文发出来，那是面板内部抛的错。',
               ],
             })
@@ -1940,6 +2028,7 @@ export function registerApi(ctx, token, service, chat) {
             for (const candidate of candidates) {
               try {
                 const state = await lan.start(candidate)
+                writeLanState({ running: true, port: state.port, lastError: null })
                 return respond(res, 200, { ok: true, lan: await withQr(state) })
               } catch (error) {
                 lastError = error
@@ -1954,6 +2043,7 @@ export function registerApi(ctx, token, service, chat) {
 
           if (req.method === 'POST' && suffix === '/lan/stop') {
             await lan.stop()
+            writeLanState({ running: false })
             return respond(res, 200, { ok: true, lan: lan.status() })
           }
 
@@ -1979,6 +2069,79 @@ export function registerApi(ctx, token, service, chat) {
               return respond(res, 200, { ok: false, error: String(error?.message ?? error), busy: false, messages: [] })
             }
             return respond(res, 200, { ok: true, cardId, ...(await chat.state(cardId)) })
+          }
+
+          /* 增量通道：面板用 fetch + ReadableStream 读，事件是 SSE 格式。
+           * 比轮询平滑得多——模型出一个字就写一个字，不用等 700ms 的下一跳。*/
+          if (req.method === 'GET' && suffix === '/chat/stream') {
+            let cardId
+            try {
+              const wantId = url.searchParams.get('id')
+              if (typeof wantId !== 'string' || wantId.length === 0) throw new Error('缺少 id：这个通道必须指定角色卡')
+              cardId = targetCard(wantId)
+              if (typeof cardId !== 'string' || cardId.length === 0) throw new Error('还没有选中的角色卡')
+            } catch (error) {
+              return respond(res, 200, { ok: false, error: String(error?.message ?? error) })
+            }
+            if (typeof chat.subscribe !== 'function') {
+              return respond(res, 200, { ok: false, error: '这个版本没有增量通道，重启 DSH 后再试' })
+            }
+            res.writeHead(200, {
+              'content-type': 'text/event-stream; charset=utf-8',
+              'cache-control': 'no-cache, no-transform',
+              connection: 'keep-alive',
+              'x-accel-buffering': 'no',
+            })
+            const write = (event, payload) => {
+              if (res.writableEnded === true) return
+              try {
+                res.write('event: ' + event + '\ndata: ' + JSON.stringify(payload) + '\n\n')
+              } catch (error) {
+                void error
+              }
+            }
+            let closed = false
+            const finish = () => {
+              if (closed) return
+              closed = true
+              try {
+                res.end()
+              } catch (error) {
+                void error
+              }
+            }
+            const unsubscribe = chat.subscribe(cardId, (payload) => {
+              if (payload !== null && typeof payload === 'object' && typeof payload.text === 'string') {
+                write('partial', { text: payload.text })
+                return
+              }
+              if (payload !== null && typeof payload === 'object' && payload.done === true) {
+                void Promise.resolve(chat.state(cardId))
+                  .then((state) => {
+                    write('done', state ?? {})
+                    finish()
+                  })
+                  .catch(() => finish())
+              }
+            })
+            const beat = setInterval(() => {
+              if (res.writableEnded === true) return
+              try {
+                res.write(': ping\n\n')
+              } catch (error) {
+                void error
+              }
+            }, 15000)
+            const cleanup = () => {
+              clearInterval(beat)
+              unsubscribe()
+            }
+            req.on('close', cleanup)
+            res.on('close', cleanup)
+            Promise.resolve(chat.state(cardId))
+              .then((state) => write('state', state ?? {}))
+              .catch(() => finish())
+            return
           }
 
           if (req.method === 'POST' && suffix === '/open') {
@@ -2553,17 +2716,13 @@ export function registerApi(ctx, token, service, chat) {
     }
 
     webCtx.effect(() => webCtx.webServer.register(route), 'role-card: api')
-    // Older hosts (and some mobile builds) expose no tapIndex: the panel then
-    // falls back to the 'ui' auth token, which the route above already accepts.
-    if (typeof webCtx.webServer.tapIndex === 'function') {
-      webCtx.effect(
-        () =>
-          webCtx.webServer.tapIndex((html) =>
-            html.replace('<head>', `<head><script>window.__DSH_ROLE_CARD__=${JSON.stringify({ token })}</script>`),
-          ),
-        'role-card: token injection',
-      )
-    }
+    webCtx.effect(
+      () =>
+        webCtx.webServer.tapIndex((html) =>
+          html.replace('<head>', `<head><script>window.__DSH_ROLE_CARD__=${JSON.stringify({ token })}</script>`),
+        ),
+      'role-card: token injection',
+    )
   })
 }
 

@@ -596,8 +596,29 @@ const ogDescription = (html) =>
  * @param {{ limit?: number }} [options]
  * @returns {Promise<{ name: string | null, brief: string, text: string, finalUrl: string, kind: string, chars: number }>}
  */
-export async function importMaterialFromUrl(url, options = {}) {
-  const target = String(url ?? '').trim()
+const JS_SHELL_RE = /内容努力加载中|内容加载中|正在加载正文|please enable javascript|開啟 javascript/i
+
+/**
+ * 有些站（aabook 这类）正文是脚本渲染的，HTML 里只有推荐位和一行「内容努力加载中」。
+ * 这种抓下来喂给模型只会得到垃圾，直接给一句能操作的提示更有用。
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function looksLikeScriptShell(text) {
+  const sample = String(text ?? '')
+  if (JS_SHELL_RE.test(sample) === true) return true
+  const cjk = (sample.match(/[\u4e00-\u9fff]/g) ?? []).length
+  if (sample.length > 400 && cjk / sample.length < 0.12) return true
+  // 正文页面总有成段的句子；全是短行（推荐位、导航、广告标题）就是空壳。
+  const lines = sample.split('\n').map((line) => line.trim()).filter((line) => line.length > 0)
+  if (lines.length >= 10) {
+    const prose = lines.filter((line) => line.length >= 40 || /[。！？…]/.test(line)).length
+    if (prose / lines.length < 0.2) return true
+  }
+  return false
+}
+
+export async function importMaterialFromUrl(url, options = {}) {  const target = String(url ?? '').trim()
   if (!/^https?:\/\//i.test(target)) throw new Error('请填写 http(s) 链接')
   const limit = Number.isInteger(options.limit) && options.limit > 2000 ? options.limit : 16000
   const { bytes, contentType, finalUrl } = await fetchResource(target)
@@ -643,6 +664,11 @@ export async function importMaterialFromUrl(url, options = {}) {
         await chapterText(first.bytes.toString('utf8'), first.finalUrl || links[0].url, links[0].title)
       ).slice(0, limit)
       if (firstText.length > 300) {
+        if (looksLikeScriptShell(firstText) === true) {
+          throw new Error(
+            '这个页面的正文是脚本加载的，抓不到真正的正文（只剩推荐位）：换一个能直接看到正文的链接，或者把正文复制进「扩写要求」再点 AI 扩写',
+          )
+        }
         return {
           name: novelTitle(raw, null),
           brief: ogDescription(raw) ?? '',
@@ -658,6 +684,11 @@ export async function importMaterialFromUrl(url, options = {}) {
   }
   const text = cleanChapterBody(picked, ogTitle(raw)).slice(0, limit)
   if (text.length < 30) throw new Error('这个链接里没抓到可用文字（可能需要登录，或者正文是 JS 渲染的）')
+  if (looksLikeScriptShell(text) === true) {
+    throw new Error(
+      '这个页面的正文是脚本加载的，抓不到真正的正文（只剩推荐位）：换一个能直接看到正文的链接，或者把正文复制进「扩写要求」再点 AI 扩写',
+    )
+  }
   return {
     name: ogTitle(raw),
     brief: ogDescription(raw) ?? '',
@@ -937,7 +968,7 @@ async function collectChapterLinks(html, baseUrl) {
  */
 function cleanChapterBody(text, title) {
   const noise =
-    /^(首页|目录|上一章|下一章|加入书签|投票|推荐票|月票|下载|字体|章节报错|返回|排行|书架|手机版|全文阅读|百度搜索|本站|版权|禁忌书屋|cool18|酷18|版主|所有跟帖|回复本帖|用户前期主贴|返回主帖|手机扫描|最近阅读|继续阅读|查看全部|快速导航|分类[:：]|最新章节[:：]|\[(?:版主管理|所有跟帖|回复本帖|前期主贴)\])/
+    /^(首页|目录|上一章|下一章|加入书签|投票|推荐票|月票|下载|字体|章节报错|返回|排行|书架|手机版|全文阅读|百度搜索|本站|版权|禁忌书屋|cool18|酷18|版主|所有跟帖|回复本帖|用户前期主贴|返回主帖|手机扫描|最近阅读|继续阅读|查看全部|快速导航|分类[:：]|最新章节[:：]|查看更多|章节目录|内容努力加载中|内容加载中|正在加载正文|性福宝|鲜辣AV|春潮AV|黄果短剧|禁漫|半糖|黄游|抖阴|精品推荐|下载排行榜|推荐排行|热门视频|疯情|书库|漫画|短剧|原声|中文字幕|\[(?:版主管理|所有跟帖|回复本帖|前期主贴)\])/
   const titleWords = String(title ?? '')
     .split(/[\s_]+/)
     .map((word) => word.replace(/[（(].*?[）)]/g, '').trim())
